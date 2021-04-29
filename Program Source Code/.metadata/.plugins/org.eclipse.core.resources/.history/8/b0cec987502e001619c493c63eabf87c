@@ -1,0 +1,5 @@
+package wsu.yoursql.rms;
+
+public class Company {
+
+}

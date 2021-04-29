@@ -1,0 +1,525 @@
+package wsu.yoursql.rms;
+import java.text.*;
+import java.sql.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.sql.SQLException;
+import javax.swing.*;
+import javax.swing.border.*;
+import javax.swing.table.*;
+
+class Policy extends JDialog implements ActionListener,MouseListener{
+	private JPanel pnTop, pnBottom;
+	private JLabel lblId, lblStop, lblState, lblReason;
+	private JButton btnMod, btnInit, btnAdd, btnDel, btnCheck,btnCancel; 
+	//btnCheck는 대출과 예약 만료일을 초과를 검사하여 정책 테이블에 해당 아이디를 넣는다
+	private JTextField tfId, tfStop, tfState, tfReason; 
+	private JTable tblList;
+
+	private ExtendedDefaultTableModel Model;
+	private String colName[] = {"회원코드", "이용불가기간", "이용 가능여부","기타 사유"};
+	private String srhData[][] = {};
+	private String[] strId, strStop, strState, strReason; 
+	private int row=0; // 리스트의 행번호
+	private String ID ="";
+	
+	private Book bk;
+	private DBView dbv;
+
+	private int dayCount=0; // 대출,예약 정책에서 만료일이 얼마나 지났는지 날짜를 센다
+
+
+	Policy(Book bk, DBView dbv, JFrame f){
+		super(f,"도서 / 회원정책" , true);
+		this.bk = bk;
+		this.dbv = dbv;
+
+		Container c = getContentPane();
+		c.setLayout(new BorderLayout(3,2));
+
+		lblId = new JLabel("회원코드: ");
+		lblStop = new JLabel("이용정지기간: ");
+		lblState = new JLabel("이용 여부: ");
+		lblReason = new JLabel("기타 사유: ");
+
+		tfId = new JTextField(40);
+		tfStop = new JTextField(40);
+		tfState = new JTextField(40);
+		tfReason = new JTextField(40);
+
+		btnMod = new JButton("수  정");
+		btnInit = new JButton("초기화");
+		btnAdd = new JButton("추  가");
+		btnDel = new JButton("삭 제");
+		btnCheck = new JButton("만료검사");
+		btnCancel = new JButton("취 소");
+
+		pnTop = new JPanel(new GridLayout(1,0,5,3));
+		pnBottom = new JPanel(new GridLayout(4,4,5,3));
+
+		Model = new ExtendedDefaultTableModel(srhData, colName);
+		tblList = new JTable(Model);
+		JScrollPane scrollPane = new JScrollPane(tblList);
+		tblList.getTableHeader().setReorderingAllowed(false);
+		tblList.getTableHeader().setResizingAllowed(false);
+		scrollPane.setBorder(new TitledBorder(new EtchedBorder(), "이용정지자 정보",
+															TitledBorder.LEFT,
+															TitledBorder.BELOW_TOP, MyFont.sans1,new Color(53,57,72)));
+		
+		scrollPane.setBackground(new Color(217,230,237));
+		tblList.setBackground(new Color(217,230,237));
+		tblList.getTableHeader().setBackground(new Color(136,146,139));
+		tblList.getTableHeader().setForeground(Color.white);
+		tblList.getTableHeader().setBackground(new Color(136,146,139));
+		tblList.getTableHeader().setForeground(Color.white);
+
+		lblId.setFont(MyFont.sans1);
+		lblStop.setFont(MyFont.sans1);
+		lblState.setFont(MyFont.sans1);
+		lblReason.setFont(MyFont.sans1);
+		btnMod.setFont(MyFont.sans1);
+		btnAdd.setFont(MyFont.sans1);
+		btnDel.setFont(MyFont.sans1);
+		btnInit.setFont(MyFont.sans1);
+		btnCheck.setFont(MyFont.sans1);
+		btnCancel.setFont(MyFont.sans1);
+
+		tfId.setBackground(new Color(252,251,217));
+		tfStop.setBackground(new Color(252,251,217));
+		tfState.setBackground(new Color(252,251,217));
+		tfReason.setBackground(new Color(252,251,217));
+		btnMod.setBackground(new Color(170,181,221));
+		btnInit.setBackground(new Color(170,181,221));
+		btnAdd.setBackground(new Color(170,181,221));
+		btnDel.setBackground(new Color(170,181,221));
+		btnCheck.setBackground(new Color(170,181,221));
+		btnCancel.setBackground(new Color(170,181,221));
+		pnTop.setBackground(new Color(217,230,237));
+		pnBottom.setBackground(new Color(217,230,237));
+		
+		pnTop.add(scrollPane);
+		pnBottom.add(lblId);		pnBottom.add(tfId);
+		pnBottom.add(lblStop);		pnBottom.add(tfStop);
+		pnBottom.add(lblState);		pnBottom.add(tfState);
+		pnBottom.add(lblReason);	pnBottom.add(tfReason);
+		pnBottom.add(btnMod);
+		pnBottom.add(btnAdd);
+		pnBottom.add(btnDel);
+		pnBottom.add(btnInit);
+		pnBottom.add(btnCheck);
+		pnBottom.add(btnCancel);
+		
+		btnMod.addActionListener(this);
+		btnInit.addActionListener(this);
+		btnAdd.addActionListener(this);
+		btnDel.addActionListener(this);
+		btnCheck.addActionListener(this);
+		btnCancel.addActionListener(this);
+		tblList.addMouseListener(this);
+
+		c.add(pnTop, BorderLayout.CENTER);
+		c.add(pnBottom, BorderLayout.SOUTH);
+
+		loadList(); // 정책 목록을 로드한다
+
+		setBounds(150,300,600,350);
+		setVisible(true);
+	}
+	public int countTuple(){ // 해당 도서 튜플갯수를 알아내기 위한 메서드
+		int count = 0;
+		try{
+			Class.forName("com.mysql.jdbc.Driver");
+			java.util.Properties pro = new java.util.Properties();
+		}
+		catch(ClassNotFoundException ex){System.out.println("드라이버가 연결되지 않습니다."+ex.getMessage());}
+			
+		try{  
+			String url = "jdbc:mysql://210.207.88.57:3306/yoursql?useSSL=false";
+			Connection conn = DriverManager.getConnection(url,"root","gkdl002"); //연결을 한다.ID는 자신의 것,Passwd도 마찬가지
+			
+			String sql = "select * from policy";
+		
+			Statement stat = conn.createStatement();
+			ResultSet rs1 = stat.executeQuery(sql);
+				
+			while(rs1.next()){
+				count++; //튜플의 갯수
+			}
+			rs1.close();
+			stat.close();
+			conn.close();
+		}catch(java.lang.Exception ea){ea.printStackTrace();}  
+		return count;
+	}
+	public void loadList(){ // 정책 테이블의  튜플갯수를 알아내기 위한 메서드
+		int len = 0; // 튜플 갯수
+		
+		try{
+			Class.forName("com.mysql.jdbc.Driver");
+			java.util.Properties pro = new java.util.Properties();
+		}
+		catch(ClassNotFoundException ex){System.out.println("드라이버가 연결되지 않습니다."+ex.getMessage());}
+			
+		try{  
+			String url = "jdbc:mysql://210.207.88.57:3306/yoursql?useSSL=false";
+			Connection conn = DriverManager.getConnection(url,"root","gkdl002"); //연결을 한다.ID는 자신의 것,Passwd도 마찬가지
+			
+			String sql = "select * from policy ";
+			
+			Statement stat = conn.createStatement();
+			ResultSet rs = stat.executeQuery(sql);
+
+			len = countTuple();
+			//튜플의 수만큼 배열로 설정
+			strId     = new String[len];
+			strStop   = new String[len];
+			strState  = new String[len];
+			strReason = new String[len];
+			
+			int num=0;
+			while(rs.next()){ //DB로부터 값들을 메모리에 저장
+				strId[num] = rs.getString("id");
+				strStop[num] = rs.getString("stopday");
+				strState[num] = rs.getString("state");
+				strReason[num] = rs.getString("reason");
+
+				num++;
+			}
+			
+			srhData = new String[len][4];
+			for(int i=0;i<len;i++){
+				srhData[i][0] = strId[i];
+				srhData[i][1] = strStop[i];
+				srhData[i][2] = strState[i];
+				srhData[i][3] = strReason[i];
+			}
+			bk.setView("  아이디: \t이용정지기간: \t이용여부: \t기타 사유: ");
+			for(int i=0;i<len;i++){
+				bk.setView("  "+strId[i]+"\t"+strStop[i]+"\t"+strState[i]+"\t"+strReason[i]); //성공
+			}
+			bk.setView("위와 같이 회원정책 테이블을 로드하였습니다.");
+
+			Model = new ExtendedDefaultTableModel(srhData,colName);
+			tblList.setModel(Model);
+			tblList.setShowGrid(true);
+			tblList.getColumnModel().getColumn(0).setPreferredWidth(20);
+			tblList.getColumnModel().getColumn(1).setPreferredWidth(30); 
+			tblList.getColumnModel().getColumn(2).setPreferredWidth(10); 
+			tblList.getColumnModel().getColumn(3).setPreferredWidth(50); 
+
+			rs.close();
+			stat.close();
+			conn.close();
+
+		}catch(java.lang.Exception ea){ea.printStackTrace();}  
+	}
+
+	///////////////////////////////////////////////////
+	//대출과 예약테이블에서 기한이 지난 경우를 체크한다.
+	// flag = 1: 대출관련, 2: 에약 관련
+	///////////////////////////////////////////
+	public void checkDay(int flag){  // ture이면 기한만료가 넘었음을 의미
+		
+		try{
+			Class.forName("com.mysql.jdbc.Driver");
+			java.util.Properties pro = new java.util.Properties();
+		}
+		catch(ClassNotFoundException ex){System.out.println("드라이버가 연결되지 않습니다."+ex.getMessage());}
+			
+		try{  
+			String url = "jdbc:mysql://210.207.88.57:3306/yoursql?useSSL=false";
+			String	sql="";
+			Connection con = DriverManager.getConnection(url,"root","gkdl002");
+			String id,bookcode, end="", nowday, temp=""; 
+			String[] overid,overstop,overstate,overreason;
+			int day=0,sum=0; //DB내용 중 만료일 자료 저장
+			int nday=0; // 현재 연도,날짜,기한
+			int countDay=0; 
+			Statement stmt = con.createStatement();
+			ResultSet rs,rs1;//= stmt.executeQuery(sql);
+			
+			//날짜 얻기
+			SimpleDateFormat formatter = new SimpleDateFormat ("yyyy-MM-dd"); 
+			java.util.Date currentTime = new java.util.Date(); 
+			nowday= formatter.format(currentTime);//현재 날짜
+					
+			//nowday = dateStr; 
+			temp += nowday.substring(0,4);
+			//nyear = Integer.parseInt(temp); // 년도만 추출
+			temp += nowday.substring(5,7);
+			//nmonth = Integer.parseInt(temp);// 월 추출
+			temp += nowday.substring(8,10);
+			nday = Integer.parseInt(temp);//일 추출
+
+			int c=0;
+			int d=0;
+
+			if(flag == 1){
+				sql = "select loaner,returndate from loan";
+				rs = stmt.executeQuery(sql);
+				
+				while(rs.next()){
+					id = rs.getString("loaner");
+					end = rs.getString("returndate");
+
+					temp="";
+					temp += end.substring(0,4);
+					//year = Integer.parseInt(temp); // 년도만 추출
+					temp += end.substring(5,7);
+					//month = Integer.parseInt(temp);// 월 추출
+					temp += end.substring(8,10);
+					day = Integer.parseInt(temp);//일 추출
+
+					if(nday > day){// 기간이 만료되어 초과된 날짜 구함
+						c++;		
+						countDay = nday - day;
+						Label lblstr = new Label("만료 기간이 초과된 회원을 보여드립니다. 확인을 누르세여");
+						lblstr.setFont(MyFont.sans1);
+						JOptionPane.showMessageDialog(this,lblstr,"대출 만료된 회원 알림",JOptionPane.INFORMATION_MESSAGE);
+						tfId.setText(id);
+						tfState.setText("불가능");
+						tfReason.setText("만료기간 초과");
+						int dblDay = countDay*2;
+						/*
+						nday = Integer.parseInt(nowday);
+						nday += countDay*2; // 초과된 날짜에 두배만큼을 이용정지한다
+						String nnday = nday+"";
+						temp="";
+						temp += nnday.substring(0,4)+"년";
+						temp += nnday.substring(5,7)+"월";
+						temp += nnday.substring(8,10)+"일";
+						*/
+						tfStop.setText(nowday+" 부터 "+dblDay+"일이후까지");
+						
+						bk.setView("  대출 테이블에서 아이디: "+id+" 님! 만료기간 초과\t 현재날짜: "+nowday+"   만료날짜: "+end+"  초과된 날짜 : "+countDay+"일");
+					}
+
+				}
+				bk.setView(" 이상으로 대출테이블에서 대출 만료가 초과한 "+c+" 개를 찾았음을 알려드렸습니다.");
+				//sql="update book set state='배치중' where ";
+			}
+
+			else if(flag == 2){
+				sql = "select B.bookcode, B.id, B.endday, A.sum from reservation as B, book as A ";//+"where A.state='예약중' or B.state='예약중'";
+				rs1 = stmt.executeQuery(sql);
+				while(rs1.next()){
+					bookcode = rs1.getString(1);
+					id = rs1.getString(2);
+					end = rs1.getString(3);
+					sum = rs1.getInt(4);
+
+					
+					temp="";
+					temp += end.substring(0,4);
+					//year = Integer.parseInt(temp); // 년도만 추출
+					temp += end.substring(5,7);
+					//month = Integer.parseInt(temp);// 월 추출
+					temp += end.substring(8,10);
+					day = Integer.parseInt(temp);//일 추출
+
+					if(nday > day){// 기간이 만료되어 초과된 날짜 구함
+						d++;
+						sum++;
+						bk.setView("  예약 테이블에서 아이디: "+id+" 님! 만료기간 초과\t 현재날짜: "+nowday+
+							"   만료날짜: "+end+" 로 강제로 예약을 취소합니다.");
+						sql ="update book set state='배치중', sum='"+sum+"' where bookcode='"+bookcode+"'";
+						stmt.executeUpdate(sql);
+						sql ="delete from reservation where id='"+id+"' and bookcode='"+bookcode+"'";
+						stmt.executeUpdate(sql);
+					}
+				}
+				bk.setView(" 이상으로 예약테이블에서 "+d+" 개를 강제로 예약을 취소했습니다.");
+			}
+			
+			
+			//rs.close();
+			stmt.close();
+			con.close();
+
+		}catch(java.lang.Exception ea){ea.printStackTrace();} 
+	}
+
+	// 아이디가 존재하면 true 리턴
+	public boolean existId(String str){
+		String id="";
+		try{
+			Class.forName("com.mysql.jdbc.Driver");
+			java.util.Properties pro = new java.util.Properties();
+		}
+		catch(ClassNotFoundException ex){System.out.println("드라이버가 연결되지 않습니다."+ex.getMessage());}
+			
+		try{
+			String url = "jdbc:mysql://210.207.88.57:3306/yoursql?useSSL=false";
+			Connection conn = DriverManager.getConnection(url,"root","gkdl002"); 
+			String sql = "select id from policy where id ='"+str+"'";
+			Statement stat = conn.createStatement();
+			ResultSet rs1 = stat.executeQuery(sql);
+			while(rs1.next()){
+				id = rs1.getString("id");
+			}
+			rs1.close();
+			stat.close();
+			conn.close();
+			
+			
+		}catch(java.lang.Exception ea){ea.printStackTrace();}
+		
+		if(id.equals(str)) //아이디가 있음
+			return true;
+		else // 아이디가 없음
+			return false;
+	}
+
+	public void updateDb(String id, String stop, String state, String reason){
+		//id = tfId.getText();	stop = tfStop.getText();
+		//state = tfState.getText();	reason = tfReason.getText();
+		try{
+			Class.forName("com.mysql.jdbc.Driver");
+			java.util.Properties pro = new java.util.Properties();
+		}
+		catch(ClassNotFoundException ex){System.out.println("드라이버가 연결되지 않습니다."+ex.getMessage());}
+			
+		try{  
+			String url = "jdbc:mysql://210.207.88.57:3306/yoursql?useSSL=false";
+			Connection conn = DriverManager.getConnection(url,"root","gkdl002"); //연결을 한다.ID는 자신의 것,Passwd도 마찬가지
+			String sql="";// = "select * from policy";
+			Statement stat = conn.createStatement();
+			if(existId(id)){
+				sql ="update policy set stopday='"+stop+"', state='"+state+"', reason='"+reason+"' where id='"+id+"'";
+			}
+			else{
+				sql ="insert into policy values('"+id+"','"+stop+"','"+state+"','"+reason+"')";
+			}
+			stat.executeUpdate(sql);
+			
+			//rs1.close();
+			stat.close();
+			conn.close();
+		}catch(java.lang.Exception ea){ea.printStackTrace();}  
+		
+	}
+
+	public void actionPerformed( ActionEvent e ){
+		Object ob = e.getSource();
+		
+		// 수정
+		if(ob == btnMod){
+			if(tfId.getText().equals("") ||tfStop.getText().equals("") ||
+				tfState.getText().equals("")||tfReason.getText().equals("")){
+				Label lbl = new Label("모두 입력해 주셔야 하셔야 해당 아이디를 업데이트합니다.");
+				lbl.setFont(MyFont.sans1);
+				JOptionPane.showMessageDialog(this,lbl,"공란이 없어야 합니다.",JOptionPane.INFORMATION_MESSAGE);
+				return;
+			}
+			else if(!existId(tfId.getText())){
+				Label lbl = new Label("존재하지 않는 데이타입니다. 추가 버튼을 클릭하셔야 합니다.");
+				lbl.setFont(MyFont.sans1);
+				JOptionPane.showMessageDialog(this,lbl,"주 의",JOptionPane.INFORMATION_MESSAGE);
+				return;
+			}
+			updateDb(tfId.getText(),tfStop.getText(),tfState.getText(),tfReason.getText()); // DB에 등록
+			loadList();
+			bk.setView("  아이디: "+tfId.getText()+"\t이용정지기간: "+tfStop.getText()+"\t이용여부: "+tfState.getText()+"\t기타사유: "+tfReason.getText()+"\n  위와 같이 정책테이블에 수정하였습니다");
+
+		}
+		// 초기화
+		else if(ob == btnInit){
+			tfId.setText("");
+			tfStop.setText("");
+			tfState.setText("");
+			tfReason.setText("");
+			bk.setView("  정책그룹을 초기화 하였습니다.");
+		}
+		// 추가
+		else if(ob == btnAdd){
+			if(tfId.getText().equals("") ||tfStop.getText().equals("") ||
+				tfState.getText().equals("")||tfReason.getText().equals("")){
+				Label lbl = new Label("모두 입력해 주셔야 하셔야 해당 아이디를 업데이트합니다.");
+				lbl.setFont(MyFont.sans1);
+				JOptionPane.showMessageDialog(this,lbl,"공란이 없어야 합니다.",JOptionPane.INFORMATION_MESSAGE);
+				return;
+			}
+			else if(existId(tfId.getText())){
+				Label lbl = new Label("존재하는 데이타입니다. 수정 버튼을 클릭하셔야 합니다.");
+				lbl.setFont(MyFont.sans1);
+				JOptionPane.showMessageDialog(this,lbl,"주 의",JOptionPane.INFORMATION_MESSAGE);
+				return;
+			}
+			updateDb(tfId.getText(),tfStop.getText(),tfState.getText(),tfReason.getText()); // DB에 등록
+			loadList();
+			bk.setView("  아이디: "+tfId.getText()+"\t이용정지기간: "+tfStop.getText()+"\t이용여부: "+tfState.getText()+"\t기타사유: "+tfReason.getText()+"\n  위와 같이 정책테이블에 등록하였습니다");
+
+		}
+		// 해당 튜플을 지운다
+		else if(ob == btnDel){
+			if(tfId.getText().equals("")){
+				Label lbl = new Label("회원님의 아이디를 입력해 주십시오");
+				lbl.setFont(MyFont.sans1);
+				JOptionPane.showMessageDialog(this,lbl,"알 림!",JOptionPane.INFORMATION_MESSAGE);
+				return;
+			}
+			try{
+			Class.forName("com.mysql.jdbc.Driver");
+			java.util.Properties pro = new java.util.Properties();
+			}
+			catch(ClassNotFoundException ex){System.out.println("드라이버가 연결되지 않습니다."+ex.getMessage());}
+			
+			try{  
+				String url = "jdbc:mysql://210.207.88.57:3306/yoursql?useSSL=false";
+				Connection conn = DriverManager.getConnection(url,"root","gkdl002"); //연결
+				
+				String sql = "Delete from policy where id='"+ID+"'";
+		
+				Statement stat = conn.createStatement();
+				stat.executeUpdate(sql);
+				bk.setView(ID+" 님의 정보를 성공적으로 삭제했습니다.");
+
+				stat.close();
+				conn.close();
+			}catch(java.lang.Exception ea){ea.printStackTrace();}  
+			
+			loadList();
+		}
+		// 대출과 예약 테이블에서 만료가 지난 회원을 찾아 정책테이블에 넣는다
+		else if(ob == btnCheck){
+			checkDay(1); // 대출테이블에서 만료된 아이디를 이용정지 시킴
+			checkDay(2); //예약테이블에서 만료된 예약을 취소,지움
+			bk.initViewList(); // 재로딩 도서목록
+			dbv.initList(1); // 대출 현황 재로드
+			dbv.initList(2); // 예약 현황 재로드
+		}
+		// 취소
+		else if(ob == btnCancel){
+			dispose();	
+		}
+
+	}
+
+	public void mouseClicked(MouseEvent me){
+			
+		Object obj = me.getSource();
+			
+		
+		if(obj == tblList){
+			String id, stop,state,reason;
+			row = tblList.getSelectedRow(); // 테이블 행번호를 넘겨줌
+			TableModel model = tblList.getModel();
+			
+			ID = id = ""+ model.getValueAt(row, 0);
+			stop = ""+ model.getValueAt(row, 1);
+			state = ""+ model.getValueAt(row, 2);
+			reason = ""+ model.getValueAt(row, 3);
+
+			tfId.setText(id);
+			tfStop.setText(stop);
+			tfState.setText(state);
+			tfReason.setText(reason);
+
+		}
+		
+	}
+	public void mousePressed(MouseEvent e){}
+	public void mouseEntered(MouseEvent e){}
+	public void mouseExited(MouseEvent e){}
+	public void mouseReleased(MouseEvent e){}
+}
